@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.GPSLogger" parent="Theme.Material3.DayNight.NoActionBar" />
+    <style name="Theme.GPSLogger.SplashScreen" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">#1B5E20</item>
+        <item name="windowSplashScreenAnimatedIcon">@android:drawable/ic_menu_mylocation</item>
+        <item name="postSplashScreenTheme">@style/Theme.GPSLogger</item>
+    </style>
+</resources>

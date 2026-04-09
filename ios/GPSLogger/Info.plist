@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- バックグラウンドでのGPS取得を許可 -->
+    <key>UIBackgroundModes</key>
+    <array>
+        <string>location</string>
+    </array>
+    <!-- GPS権限の説明文（ユーザーに表示される） -->
+    <key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+    <string>バックグラウンドでGPSをロギングするために位置情報を使用します。</string>
+    <key>NSLocationWhenInUseUsageDescription</key>
+    <string>現在地を取得してGPSをロギングするために位置情報を使用します。</string>
+    <key>NSLocationAlwaysUsageDescription</key>
+    <string>バックグラウンドでGPSをロギングするために常に位置情報が必要です。</string>
+</dict>
+</plist>
