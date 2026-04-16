@@ -21,6 +21,11 @@ struct SessionListView: View {
                                 Label("エクスポート", systemImage: "square.and.arrow.up")
                             }
                             .tint(.blue)
+                            // 地図表示ボタン（右スワイプで現れる一番左のアクション）
+                            NavigationLink(destination: MapView(session: session, repo: repo)) {
+                                Label("地図", systemImage: "map")
+                            }
+                            .tint(.green)
                         }
                 }
             }

@@ -20,6 +20,16 @@
         android:theme="@style/Theme.GPSLogger"
         android:supportsRtl="true">
 
+        <!--
+            Google Maps APIキー。
+            Google Cloud Console (https://console.cloud.google.com) で取得した
+            APIキーに置き換えてください。
+            OSM・地理院地図タブはAPIキー不要で使用できます。
+        -->
+        <meta-data
+            android:name="com.google.android.geo.API_KEY"
+            android:value="YOUR_GOOGLE_MAPS_API_KEY_HERE" />
+
         <activity
             android:name=".MainActivity"
             android:exported="true"

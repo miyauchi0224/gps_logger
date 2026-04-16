@@ -6,6 +6,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -23,6 +24,7 @@ import java.util.Locale
 @Composable
 fun SessionListScreen(
     onNavigateToExport: (String, String) -> Unit,
+    onNavigateToMap: (String, String) -> Unit,
     onBack: () -> Unit,
     vm: SessionListViewModel = hiltViewModel()
 ) {
@@ -57,6 +59,7 @@ fun SessionListScreen(
                 items(sessions, key = { it.id }) { session ->
                     SessionCard(
                         session = session,
+                        onMap = { onNavigateToMap(session.id, session.name) },
                         onExport = { onNavigateToExport(session.id, session.name) },
                         onDelete = { deleteTarget = session }
                     )
@@ -87,6 +90,7 @@ fun SessionListScreen(
 @Composable
 private fun SessionCard(
     session: Session,
+    onMap: () -> Unit,
     onExport: () -> Unit,
     onDelete: () -> Unit
 ) {
@@ -106,6 +110,14 @@ private fun SessionCard(
                 Text(
                     text = "${session.pointCount}ポイント · ${session.durationFormatted()}",
                     style = MaterialTheme.typography.bodySmall
+                )
+            }
+            // 地図ボタン
+            IconButton(onClick = onMap) {
+                Icon(
+                    Icons.Default.Map,
+                    contentDescription = "地図を表示",
+                    tint = MaterialTheme.colorScheme.primary
                 )
             }
             IconButton(onClick = onExport) {

@@ -8,6 +8,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.example.gpslogger.ui.export.ExportScreen
 import com.example.gpslogger.ui.home.HomeScreen
+import com.example.gpslogger.ui.map.MapScreen
 import com.example.gpslogger.ui.session.SessionListScreen
 import com.example.gpslogger.ui.settings.SettingsScreen
 
@@ -15,10 +16,14 @@ object Routes {
     const val HOME = "home"
     const val SESSION_LIST = "session_list"
     const val EXPORT = "export/{sessionId}/{sessionName}"
+    const val MAP = "map/{sessionId}/{sessionName}"
     const val SETTINGS = "settings"
 
     fun exportRoute(sessionId: String, sessionName: String) =
         "export/$sessionId/${sessionName.replace("/", "_")}"
+
+    fun mapRoute(sessionId: String, sessionName: String) =
+        "map/$sessionId/${sessionName.replace("/", "_")}"
 }
 
 @Composable
@@ -37,6 +42,9 @@ fun NavGraph() {
                 onNavigateToExport = { id, name ->
                     navController.navigate(Routes.exportRoute(id, name))
                 },
+                onNavigateToMap = { id, name ->
+                    navController.navigate(Routes.mapRoute(id, name))
+                },
                 onBack = { navController.popBackStack() }
             )
         }
@@ -54,6 +62,15 @@ fun NavGraph() {
                 sessionName = sessionName,
                 onBack = { navController.popBackStack() }
             )
+        }
+        composable(
+            route = Routes.MAP,
+            arguments = listOf(
+                navArgument("sessionId") { type = NavType.StringType },
+                navArgument("sessionName") { type = NavType.StringType }
+            )
+        ) {
+            MapScreen(onBack = { navController.popBackStack() })
         }
         composable(Routes.SETTINGS) {
             SettingsScreen(onBack = { navController.popBackStack() })
