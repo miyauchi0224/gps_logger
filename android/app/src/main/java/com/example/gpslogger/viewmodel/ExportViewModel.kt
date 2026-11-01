@@ -45,6 +45,13 @@ class ExportViewModel @Inject constructor(
     }
 
     private fun saveToDownloads(context: Context, fileName: String, content: String) {
+        // MediaStore.Downloads は API 29 から。それより前はストレージ権限が不要なアプリ専用のDownloadsに保存する
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+            val dir = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
+                ?: throw Exception("保存先が利用できません")
+            java.io.File(dir, fileName).writeText(content, Charsets.UTF_8)
+            return
+        }
         val values = ContentValues().apply {
             put(MediaStore.Downloads.DISPLAY_NAME, fileName)
             put(MediaStore.Downloads.MIME_TYPE, "text/csv")

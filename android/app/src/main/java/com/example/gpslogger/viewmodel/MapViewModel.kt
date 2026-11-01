@@ -3,18 +3,14 @@ package com.example.gpslogger.viewmodel
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.gpslogger.repository.AppSettings
 import com.example.gpslogger.repository.LocationRepository
+import com.example.gpslogger.repository.SettingsRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
 import javax.inject.Inject
-
-/** 地図表示で選択できる地図の種類 */
-enum class MapType {
-    GOOGLE,  // Google Maps（APIキー必要）
-    OSM,     // OpenStreetMap（無料・APIキー不要）
-    GSI      // 国土地理院地図（無料・APIキー不要）
-}
 
 /**
  * MapScreen用のViewModel。
@@ -23,6 +19,7 @@ enum class MapType {
 @HiltViewModel
 class MapViewModel @Inject constructor(
     private val repo: LocationRepository,
+    settingsRepo: SettingsRepository,
     savedStateHandle: SavedStateHandle
 ) : ViewModel() {
 
@@ -37,4 +34,8 @@ class MapViewModel @Inject constructor(
             started = SharingStarted.WhileSubscribed(5000),
             initialValue = emptyList()
         )
+
+    // 地図の既定やGoogle Mapsの表示設定。読み込み完了までは null
+    val settings: StateFlow<AppSettings?> = settingsRepo.settings
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 }

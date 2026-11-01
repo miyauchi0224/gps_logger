@@ -8,19 +8,22 @@ import androidx.lifecycle.viewModelScope
 import com.example.gpslogger.model.LogPoint
 import com.example.gpslogger.model.Session
 import com.example.gpslogger.repository.LocationRepository
+import com.example.gpslogger.repository.SettingsRepository
 import com.example.gpslogger.service.LocationForegroundService
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 @HiltViewModel
 class HomeViewModel @Inject constructor(
     application: Application,
-    private val repo: LocationRepository
+    private val repo: LocationRepository,
+    private val settingsRepo: SettingsRepository
 ) : AndroidViewModel(application) {
 
     private val _isRecording = MutableStateFlow(false)
@@ -34,9 +37,6 @@ class HomeViewModel @Inject constructor(
 
     private val _elapsedSeconds = MutableStateFlow(0L)
     val elapsedSeconds: StateFlow<Long> = _elapsedSeconds.asStateFlow()
-
-    // 設定から読む記録間隔（秒）
-    var intervalSec: Long = 1L
 
     init {
         // アプリ再起動時に未完了セッションがあれば復元
@@ -62,6 +62,9 @@ class HomeViewModel @Inject constructor(
             _currentSession.value = session
             _isRecording.value = true
             _elapsedSeconds.value = 0L
+
+            // 設定画面で保存した記録間隔（秒）
+            val intervalSec = settingsRepo.settings.first().intervalSec
 
             // Foreground Service を起動
             val intent = Intent(getApplication(), LocationForegroundService::class.java).apply {

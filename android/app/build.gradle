@@ -1,34 +1,48 @@
 plugins {
     id 'com.android.application'
     id 'org.jetbrains.kotlin.android'
+    id 'org.jetbrains.kotlin.plugin.compose'
     id 'com.google.dagger.hilt.android'
     id 'com.google.devtools.ksp'
 }
 
+// Google Maps のAPIキーは、リポジトリに入れない local.properties の MAPS_API_KEY から読む
+def localProperties = new Properties()
+def localPropertiesFile = rootProject.file("local.properties")
+if (localPropertiesFile.exists()) {
+    localPropertiesFile.withInputStream { localProperties.load(it) }
+}
+def mapsApiKey = localProperties.getProperty("MAPS_API_KEY", "")
+
 android {
     namespace 'com.example.gpslogger'
-    compileSdk 34
+    compileSdk 36
 
     defaultConfig {
         applicationId "com.example.gpslogger"
         minSdk 26
-        targetSdk 34
+        targetSdk 36
         versionCode 1
         versionName "1.0"
+
+        manifestPlaceholders = [MAPS_API_KEY: mapsApiKey]
+        // キー未設定のときは Google の地図を出さず、設定方法を案内する
+        buildConfigField "boolean", "MAPS_API_KEY_SET", mapsApiKey.isEmpty() ? "false" : "true"
     }
 
     buildFeatures {
         compose true
-    }
-    composeOptions {
-        kotlinCompilerExtensionVersion '1.5.8'
-    }
-    kotlinOptions {
-        jvmTarget = '17'
+        buildConfig true
     }
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
+    }
+}
+
+kotlin {
+    compilerOptions {
+        jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
     }
 }
 
@@ -39,7 +53,11 @@ dependencies {
     implementation 'androidx.compose.ui:ui'
     implementation 'androidx.compose.material3:material3'
     implementation 'androidx.compose.ui:ui-tooling-preview'
+    implementation 'androidx.compose.material:material-icons-extended'
     implementation 'androidx.activity:activity-compose:1.8.2'
+
+    // 実行時パーミッション
+    implementation 'com.google.accompanist:accompanist-permissions:0.34.0'
 
     // Navigation
     implementation 'androidx.navigation:navigation-compose:2.7.7'
@@ -49,13 +67,13 @@ dependencies {
     implementation 'androidx.lifecycle:lifecycle-runtime-compose:2.7.0'
 
     // Room (ローカルDB)
-    implementation 'androidx.room:room-runtime:2.6.1'
-    implementation 'androidx.room:room-ktx:2.6.1'
-    ksp 'androidx.room:room-compiler:2.6.1'
+    implementation 'androidx.room:room-runtime:2.7.2'
+    implementation 'androidx.room:room-ktx:2.7.2'
+    ksp 'androidx.room:room-compiler:2.7.2'
 
     // Hilt (依存性注入)
-    implementation 'com.google.dagger:hilt-android:2.50'
-    ksp 'com.google.dagger:hilt-compiler:2.50'
+    implementation 'com.google.dagger:hilt-android:2.57.2'
+    ksp 'com.google.dagger:hilt-compiler:2.57.2'
     implementation 'androidx.hilt:hilt-navigation-compose:1.1.0'
 
     // 位置情報
@@ -71,6 +89,9 @@ dependencies {
     // Coroutines
     implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3'
     implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.7.3'
+
+    // Material Components (XMLテーマ Theme.Material3 用)
+    implementation 'com.google.android.material:material:1.13.0'
 
     // Splash Screen
     implementation 'androidx.core:core-splashscreen:1.0.1'

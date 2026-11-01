@@ -1,0 +1,17 @@
+*.iml
+.gradle
+/local.properties
+/.idea
+.DS_Store
+/build
+/captures
+.externalNativeBuild
+.cxx
+local.properties
+/app/build
+/app/release
+
+# 署名鍵と鍵の情報（コミットしない）
+keystore.properties
+*.jks
+*.keystore

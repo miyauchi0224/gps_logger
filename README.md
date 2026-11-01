@@ -95,15 +95,24 @@ cd android
 
 #### Google Maps APIキーの設定
 
-`android/app/src/main/AndroidManifest.xml` を開き、以下の箇所を自分のAPIキーに書き換えてください：
+`android/local.properties`（git管理外）に、取得したAPIキーを追記してビルドし直してください：
 
-```xml
-<meta-data
-    android:name="com.google.android.geo.API_KEY"
-    android:value="YOUR_GOOGLE_MAPS_API_KEY_HERE" />  <!-- ← ここを変更 -->
+```properties
+MAPS_API_KEY=取得したAPIキー
 ```
 
-> **注意**: APIキーは `.gitignore` に追加するか、環境変数で管理してください。リポジトリに直接コミットしないようにしてください。
+ビルド時に `AndroidManifest.xml` へ埋め込まれます。未設定の場合、地図画面の Google タブには設定方法の案内が表示され、設定画面にも「APIキー: 未設定」と表示されます。Google 以外の地図（OSM・地理院・その他）はAPIキー不要です。
+
+#### 選べる地図
+
+| 提供元 | 種類 |
+|--------|------|
+| Google（要APIキー） | 標準 / 衛星 / 衛星+地名 / 地形 |
+| OpenStreetMap | 標準 / 人道支援 / 地形（OpenTopoMap） |
+| 国土地理院 | 標準 / 淡色 / 白地図 / 航空写真 / 色別標高 |
+| その他 | モノクロ（明・暗、OSMをグレースケール化） / 衛星（Esri） |
+
+設定画面では、デフォルト地図と Google マップの表示（交通状況・3D の建物・ズームボタン）を設定できます。
 
 ---
 
