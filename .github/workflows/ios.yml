@@ -33,7 +33,11 @@ jobs:
           echo "Simulator: $DEVICE"
           xcodebuild -version
           # エラーはGitHubの画面に注釈（annotations）として表示する
-          xcodebuild test             -project GPSLogger.xcodeproj             -scheme GPSLogger             -destination "platform=iOS Simulator,name=$DEVICE"             CODE_SIGNING_ALLOWED=NO 2>&1 | tee build.log | xcbeautify --renderer github-actions || {
+          xcodebuild test \
+            -project GPSLogger.xcodeproj \
+            -scheme GPSLogger \
+            -destination "platform=iOS Simulator,name=$DEVICE" \
+            CODE_SIGNING_ALLOWED=NO 2>&1 | tee build.log | xcbeautify --renderer github-actions || {
             # xcbeautify が拾えなかった場合に備えて、エラーの行も注釈にする
             grep -E "error:|Test Case .* failed|\*\* .* FAILED \*\*" build.log | sort -u | head -50 | while IFS= read -r line; do
               echo "::error::$line"

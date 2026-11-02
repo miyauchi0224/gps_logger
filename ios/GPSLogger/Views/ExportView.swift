@@ -59,7 +59,8 @@ struct ExportView: View {
         }
         .navigationTitle("エクスポート")
         .navigationBarTitleDisplayMode(.inline)
-        // 保存先ピッカー。キャンセルされたら「取り消しました」と表示する
+        // 保存先ピッカー。保存せずに閉じたら（キャンセル）「取り消しました」と表示する。
+        // 保存したときは onCompletion で成功の表示に変わる
         .fileExporter(
             isPresented: Binding(
                 get: { vm.document != nil },
@@ -68,8 +69,7 @@ struct ExportView: View {
             document: vm.document,
             contentType: .commaSeparatedText,
             defaultFilename: vm.baseFileName,
-            onCompletion: { vm.documentSaved($0) },
-            onCancellation: { vm.documentCancelled() }
+            onCompletion: { vm.documentSaved($0) }
         )
         .sheet(item: $vm.shareItem) { item in
             ActivityView(url: item.url) { completed, error in
