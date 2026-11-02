@@ -26,7 +26,9 @@ object AppModule {
     @Provides
     @Singleton
     fun provideDatabase(@ApplicationContext context: Context): AppDatabase =
-        Room.databaseBuilder(context, AppDatabase::class.java, "gpslogger.db").build()
+        Room.databaseBuilder(context, AppDatabase::class.java, "gpslogger.db")
+            .addMigrations(AppDatabase.MIGRATION_1_2)
+            .build()
 
     @Provides
     fun provideSessionDao(db: AppDatabase) = db.sessionDao()

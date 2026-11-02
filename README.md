@@ -14,11 +14,14 @@ GPS位置データをリアルタイムで記録・エクスポート・可視�
 
 | 機能 | 説明 |
 |------|------|
-| バックグラウンドGPS記録 | アプリを閉じていても位置情報を継続記録 |
-| 測位モード自動切替 | GPS精度が低下時にWiFi測位へ自動フォールバック |
+| バックグラウンドGPS記録 | アプリを閉じていても位置情報を継続記録（停止せずに終了した記録は、次にアプリを開いたときに再開） |
+| 記録中の表示 | 記録中はアプリの全画面の上部と通知を緑で表示。他のアプリ使用中も画面上部に緑の帯を重ねて表示（「他のアプリの上に重ねて表示」の許可が必要、設定でオフ可） |
+| 記録モード | 標準（GPS）／低消費電力（WiFi・基地局）を選択。精度と消費電力の目安を画面に表示 |
+| 低消費電力への自動切替 | 標準モードでも、バッテリー残量が設定値以下（充電中を除く）か省電力モードのときは低消費電力に切替 |
 | 複数地図対応 | Google Maps / OpenStreetMap / 国土地理院地図 |
-| CSVエクスポート | タイムスタンプ・緯度経度・高度・速度を出力 |
-| クラウドアップロード | Google Drive / OneDrive へのOAuth認証付きアップロード |
+| CSVエクスポート | タイムスタンプ・緯度経度・高度・速度・記録手段を出力。ファイル名と保存先を選択可能 |
+| CSV読み込み | CSVを読み込んでセッション一覧に追加（このアプリのCSVのほか、lat/lon/time などの列名やUnix時刻のCSVにも対応） |
+| クラウド保存 | Google Drive / OneDrive へCSVを保存（Android: 標準の保存先ピッカーから選択。各アプリのインストールとサインインが必要） |
 | セッション管理 | 複数の記録セッションを管理・最大365日間の連続記録 |
 
 ---
@@ -119,8 +122,8 @@ MAPS_API_KEY=取得したAPIキー
 ## CSV出力フォーマット
 
 ```csv
-id,timestamp,latitude,longitude,altitude,accuracy,speed,source
-xxxxxxxx-...,2026-04-09T10:00:00+09:00,35.681236,139.767125,5.2,3.0,1.2,GPS
+id,timestamp,latitude,longitude,altitude,accuracy,speed,source,method
+xxxxxxxx-...,2026-04-09T10:00:00+09:00,35.681236,139.767125,5.2,3.0,1.2,GPS,STANDARD
 ```
 
 | カラム | 内容 | 単位 |
@@ -132,7 +135,8 @@ xxxxxxxx-...,2026-04-09T10:00:00+09:00,35.681236,139.767125,5.2,3.0,1.2,GPS
 | altitude | 高度 | メートル |
 | accuracy | 水平精度 | メートル |
 | speed | 速度 | m/s |
-| source | 測位方式 | GPS / WiFi |
+| source | 測位方式（精度20m未満をGPSとみなす推定） | GPS / WIFI |
+| method | 記録手段 | STANDARD（標準・GPS）/ LOW_POWER（低消費電力）/ LOW_POWER_AUTO（標準から自動で低消費電力に切替） |
 
 ---
 
@@ -148,7 +152,7 @@ xxxxxxxx-...,2026-04-09T10:00:00+09:00,35.681236,139.767125,5.2,3.0,1.2,GPS
 - `ACCESS_COARSE_LOCATION` — WiFi/基地局測位
 - `ACCESS_BACKGROUND_LOCATION` — バックグラウンド測位
 - `FOREGROUND_SERVICE` / `FOREGROUND_SERVICE_LOCATION` — 常駐サービス
-- `INTERNET` — クラウドアップロード
+- `INTERNET` — 地図タイルの取得
 
 ---
 

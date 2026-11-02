@@ -1,5 +1,6 @@
 package com.example.gpslogger.model
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.ForeignKey
 import androidx.room.Index
@@ -26,7 +27,10 @@ data class LogPoint(
     val altitude: Double? = null,
     val accuracy: Float,
     val speed: Float? = null,
-    val sourceType: SourceType = SourceType.GPS
+    val sourceType: SourceType = SourceType.GPS,
+    // DBバージョン2で追加。既存の行は STANDARD になる
+    @ColumnInfo(defaultValue = "STANDARD")
+    val recordMethod: RecordMethod = RecordMethod.STANDARD
 )
 
 enum class SourceType { GPS, WIFI }

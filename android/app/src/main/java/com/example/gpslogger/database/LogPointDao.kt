@@ -13,6 +13,10 @@ interface LogPointDao {
     @Insert
     suspend fun insert(logPoint: LogPoint)
 
+    /** CSV読み込み用：まとめて追加 */
+    @Insert
+    suspend fun insertAll(logPoints: List<LogPoint>)
+
     /** セッションIDに紐づくログ一覧をリアルタイムで監視 */
     @Query("SELECT * FROM log_points WHERE sessionId = :sessionId ORDER BY timestamp ASC")
     fun observeBySession(sessionId: String): Flow<List<LogPoint>>

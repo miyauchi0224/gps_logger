@@ -1,10 +1,14 @@
 package com.example.gpslogger.ui.export
 
+import android.content.Intent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -23,6 +27,14 @@ fun ExportScreen(
 ) {
     val context = LocalContext.current
     val exportState by vm.exportState.collectAsState()
+
+    // Android標準の保存先ピッカー。Google Drive のアプリが入っていれば保存先に選べる。
+    // ピッカーで戻る（←）を押すと uri が null で返る
+    val createDocument = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("text/csv")
+    ) { uri ->
+        if (uri != null) vm.exportToUri(context, sessionId, uri) else vm.pickerCancelled()
+    }
 
     Scaffold(
         topBar = {
@@ -48,43 +60,83 @@ fun ExportScreen(
                 text = sessionName,
                 style = MaterialTheme.typography.headlineSmall
             )
-            Text(
-                text = "エクスポート形式を選んでください",
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+            // ファイル名（保存先ピッカーでも変更できる）
+            var fileName by rememberSaveable { mutableStateOf(ExportViewModel.csvFileName(sessionName)) }
+            OutlinedTextField(
+                value = fileName,
+                onValueChange = { fileName = it },
+                label = { Text("ファイル名") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
             )
+            val normalizedName = ExportViewModel.normalizeFileName(fileName)
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            // CSV保存ボタン（端末のDownloadsフォルダへ）
+            // 保存先を選んで保存（端末内のフォルダ、Google Drive など）
             Button(
-                onClick = { vm.exportToCsv(context, sessionId, sessionName) },
+                onClick = { createDocument.launch(normalizedName) },
                 modifier = Modifier.fillMaxWidth(),
                 enabled = exportState !is ExportState.Loading
             ) {
-                Text("CSVとして端末に保存")
+                Text("保存先を選んで保存")
             }
+            Text(
+                text = "保存先の画面で、左上のメニューから端末内のフォルダや Google Drive を選べます。" +
+                    "ファイル名もそこで変更できます。保存をやめるときは、保存先の画面で戻る（←）を押してください。",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
 
-            // Google Drive（将来実装）
+            // 共有で保存（OneDrive は保存先ピッカーに出ないので、共有から渡す）
             OutlinedButton(
-                onClick = { /* TODO: Google Drive OAuth → アップロード */ },
+                onClick = {
+                    vm.prepareShare(context, sessionId, normalizedName) { uri ->
+                        val send = Intent(Intent.ACTION_SEND).apply {
+                            type = "text/csv"
+                            putExtra(Intent.EXTRA_STREAM, uri)
+                            putExtra(Intent.EXTRA_TITLE, normalizedName)
+                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        }
+                        context.startActivity(Intent.createChooser(send, "CSVを保存するアプリ"))
+                    }
+                },
                 modifier = Modifier.fillMaxWidth(),
-                enabled = false
+                enabled = exportState !is ExportState.Loading
             ) {
-                Text("Google Drive にアップロード（近日対応）")
+                Text("共有して保存（OneDrive など）")
             }
+            Text(
+                text = "共有先で OneDrive を選ぶと、OneDrive のアップロード画面で保存先フォルダを選べます。" +
+                    "やめるときは共有先を選ばずに閉じてください。",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
 
-            // OneDrive（将来実装）
+            // CSV保存ボタン（端末のDownloadsフォルダへ、選択なしで保存）
             OutlinedButton(
-                onClick = { /* TODO: OneDrive OAuth → アップロード */ },
+                onClick = { vm.exportToCsv(context, sessionId, normalizedName) },
                 modifier = Modifier.fillMaxWidth(),
-                enabled = false
+                enabled = exportState !is ExportState.Loading
             ) {
-                Text("OneDrive にアップロード（近日対応）")
+                Text("ダウンロードフォルダに保存")
             }
 
             // 状態表示
             when (val state = exportState) {
-                is ExportState.Loading -> CircularProgressIndicator()
+                is ExportState.Loading -> {
+                    CircularProgressIndicator()
+                    TextButton(onClick = { vm.cancel() }) { Text("キャンセル") }
+                }
+                is ExportState.Info -> {
+                    Card {
+                        Text(text = state.message, modifier = Modifier.padding(16.dp))
+                    }
+                    LaunchedEffect(state) {
+                        kotlinx.coroutines.delay(3000)
+                        vm.resetState()
+                    }
+                }
                 is ExportState.Success -> {
                     Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
                         Text(

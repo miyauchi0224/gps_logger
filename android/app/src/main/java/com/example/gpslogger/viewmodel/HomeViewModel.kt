@@ -7,51 +7,74 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.gpslogger.model.LogPoint
 import com.example.gpslogger.model.Session
+import com.example.gpslogger.repository.AppSettings
 import com.example.gpslogger.repository.LocationRepository
 import com.example.gpslogger.repository.SettingsRepository
 import com.example.gpslogger.service.LocationForegroundService
+import com.example.gpslogger.service.RecordingStatus
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.mapLatest
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
+/**
+ * ホーム画面用のViewModel。
+ * 記録とDBへの保存は LocationForegroundService が行い、ここではその状態を表示用に公開する。
+ */
+@OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel
 class HomeViewModel @Inject constructor(
     application: Application,
     private val repo: LocationRepository,
-    private val settingsRepo: SettingsRepository
+    settingsRepo: SettingsRepository
 ) : AndroidViewModel(application) {
 
-    private val _isRecording = MutableStateFlow(false)
-    val isRecording: StateFlow<Boolean> = _isRecording.asStateFlow()
+    /** 記録中の状態（記録手段を含む）。記録していないときは null */
+    val status: StateFlow<RecordingStatus?> = LocationForegroundService.status
 
-    private val _currentSession = MutableStateFlow<Session?>(null)
-    val currentSession: StateFlow<Session?> = _currentSession.asStateFlow()
+    val isRecording: StateFlow<Boolean> = status
+        .map { it != null }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, status.value != null)
 
-    private val _latestPoint = MutableStateFlow<LogPoint?>(null)
-    val latestPoint: StateFlow<LogPoint?> = _latestPoint.asStateFlow()
+    val latestPoint: StateFlow<LogPoint?> = LocationForegroundService.latestPoint
 
-    private val _elapsedSeconds = MutableStateFlow(0L)
-    val elapsedSeconds: StateFlow<Long> = _elapsedSeconds.asStateFlow()
+    val settings: StateFlow<AppSettings?> = settingsRepo.settings
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
-    init {
-        // アプリ再起動時に未完了セッションがあれば復元
-        viewModelScope.launch {
-            val incomplete = repo.getIncompleteSession()
-            if (incomplete != null) {
-                _currentSession.value = incomplete
-                // 注意: 復元ダイアログはUI側で表示する
+    val currentSession: StateFlow<Session?> = status
+        .map { it?.sessionId }
+        .distinctUntilChanged()
+        .mapLatest { id -> id?.let { repo.getSession(it) } }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+
+    /** 記録開始からの経過秒数。アプリを開き直しても開始時刻から計算する */
+    val elapsedSeconds: StateFlow<Long> = currentSession
+        .flatMapLatest { session ->
+            if (session == null) flowOf(0L)
+            else flow {
+                while (true) {
+                    emit((System.currentTimeMillis() - session.startTime) / 1000)
+                    delay(1000)
+                }
             }
         }
-        // Serviceから流れてくるログポイントを購読・保存
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0L)
+
+    init {
+        // 停止しないままアプリが終了していた場合は、未完了のセッションの記録を再開する
         viewModelScope.launch {
-            LocationForegroundService.logPointFlow.collect { point ->
-                repo.saveLogPoint(point)
-                _latestPoint.value = point
+            if (status.value == null && repo.getIncompleteSession() != null) {
+                sendToService(LocationForegroundService.ACTION_START)
             }
         }
     }
@@ -59,42 +82,24 @@ class HomeViewModel @Inject constructor(
     fun startRecording() {
         viewModelScope.launch {
             val session = repo.startSession()
-            _currentSession.value = session
-            _isRecording.value = true
-            _elapsedSeconds.value = 0L
-
-            // 設定画面で保存した記録間隔（秒）
-            val intervalSec = settingsRepo.settings.first().intervalSec
-
-            // Foreground Service を起動
-            val intent = Intent(getApplication(), LocationForegroundService::class.java).apply {
-                action = LocationForegroundService.ACTION_START
-                putExtra(LocationForegroundService.EXTRA_SESSION_ID, session.id)
-                putExtra(LocationForegroundService.EXTRA_INTERVAL_SEC, intervalSec)
-            }
-            ContextCompat.startForegroundService(getApplication(), intent)
-
-            // 経過時間カウンター
-            launch {
-                while (_isRecording.value) {
-                    delay(1000)
-                    _elapsedSeconds.value++
-                }
-            }
+            sendToService(LocationForegroundService.ACTION_START, session.id)
         }
     }
 
     fun stopRecording() {
-        viewModelScope.launch {
-            val sessionId = _currentSession.value?.id ?: return@launch
-            // Foreground Service を停止
-            val intent = Intent(getApplication(), LocationForegroundService::class.java).apply {
-                action = LocationForegroundService.ACTION_STOP
-            }
-            getApplication<Application>().stopService(intent)
+        // セッションを閉じるのはServiceが行う（保存待ちのポイントを書き終えてから）
+        sendToService(LocationForegroundService.ACTION_STOP)
+    }
 
-            repo.stopSession(sessionId)
-            _isRecording.value = false
+    private fun sendToService(action: String, sessionId: String? = null) {
+        val intent = Intent(getApplication(), LocationForegroundService::class.java).apply {
+            this.action = action
+            sessionId?.let { putExtra(LocationForegroundService.EXTRA_SESSION_ID, it) }
+        }
+        if (action == LocationForegroundService.ACTION_START) {
+            ContextCompat.startForegroundService(getApplication(), intent)
+        } else {
+            getApplication<Application>().startService(intent)
         }
     }
 
