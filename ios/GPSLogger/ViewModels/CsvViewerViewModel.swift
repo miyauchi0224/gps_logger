@@ -9,8 +9,11 @@ struct CsvTable {
     /// エクスポートと同じCSVを列に分ける
     init(csv: String) {
         let lines = csv.split(whereSeparator: \.isNewline).map { CsvImporter.splitLine(String($0)) }
-        header = lines.first ?? []
-        rows = Array(lines.dropFirst())
+        // init の途中では self をクロージャで使えないので、ローカル変数で計算してから入れる
+        let header = lines.first ?? []
+        let rows = Array(lines.dropFirst())
+        self.header = header
+        self.rows = rows
         widths = header.indices.map { col in
             rows.reduce(header[col].count) { width, row in
                 col < row.count ? max(width, row[col].count) : width
