@@ -1,0 +1,37 @@
+name: iOS CI
+
+on:
+  # iOS のファイルを変更したら、どのブランチでもビルドとテストを行う
+  push:
+    paths: [ "ios/**", ".github/workflows/ios.yml" ]
+  pull_request:
+    branches: [ "main" ]
+    paths: [ "ios/**", ".github/workflows/ios.yml" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-15
+    defaults:
+      run:
+        working-directory: ios
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      # .xcodeproj は git に入れず、project.yml から作る
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Build and test
+        run: |
+          # ランナーに入っているシミュレータから iPhone を1台選ぶ
+          DEVICE=$(xcrun simctl list devices available | grep -m1 -oE 'iPhone [^(]+' | sed 's/ *$//')
+          echo "Simulator: $DEVICE"
+          xcodebuild test \
+            -project GPSLogger.xcodeproj \
+            -scheme GPSLogger \
+            -destination "platform=iOS Simulator,name=$DEVICE" \
+            CODE_SIGNING_ALLOWED=NO

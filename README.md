@@ -19,11 +19,25 @@ GPS位置データをリアルタイムで記録・エクスポート・可視�
 | 記録モード | 標準（GPS）／低消費電力（WiFi・基地局）を選択。精度と消費電力の目安を画面に表示。記録画面のカードをタップしても切替でき、記録中もすぐ反映 |
 | 記録間隔どおりの測位 | 標準モードではGPSを直接使い、止まっているときも記録間隔（既定1秒）ごとに記録（Android 12以降。屋内でGPSが途切れたらFused Locationで補完） |
 | 低消費電力への自動切替 | 標準モードでも、バッテリー残量が設定値以下（充電中を除く）か省電力モードのときは低消費電力に切替 |
-| 複数地図対応 | Google Maps / OpenStreetMap / 国土地理院地図 |
+| 複数地図対応 | Google Maps（Android）/ Apple マップ（iOS）/ OpenStreetMap / 国土地理院地図 など |
 | CSVエクスポート | タイムスタンプ・緯度経度・高度・速度・記録手段を出力。ファイル名と保存先を選択可能 |
 | CSV読み込み | CSVを読み込んでセッション一覧に追加（このアプリのCSVのほか、lat/lon/time などの列名やUnix時刻のCSVにも対応） |
-| クラウド保存 | Google Drive / OneDrive へCSVを保存（Android: 標準の保存先ピッカーから選択。各アプリのインストールとサインインが必要） |
+| CSV表示 | セッションのデータを、エクスポートと同じCSVの表としてアプリ内で表示 |
+| クラウド保存 | Google Drive / OneDrive へCSVを保存（Android・iOS とも標準の保存先ピッカーまたは共有から選択。各アプリのインストールとサインインが必要） |
 | セッション管理 | 複数の記録セッションを管理・最大365日間の連続記録 |
+
+### iOS 版の違い
+
+iOS 版も上と同じ機能を持ちますが、iOS の仕組み上、次の点が Android 版と異なります。
+
+| 機能 | iOS 版 |
+|------|--------|
+| 記録中の表示 | アプリ内は画面上部の緑の帯。アプリを閉じているときは、ステータスバーに位置情報の使用中表示（青い帯・アイコン）が出る（iOS では他のアプリの上に重ねて表示できないため） |
+| 停止せずに終了した記録 | 次にアプリを開いたときに再開。位置情報を「常に」許可していれば、システムにアプリが終了されても、大きく移動したときに自動で起動して再開 |
+| 記録間隔どおりの測位 | CoreLocation が毎秒届ける位置から、記録間隔ごとに記録 |
+| 低消費電力への自動切替 | 「低電力モード」のときも切替 |
+| 地図 | Google の代わりに Apple マップ（標準 / 衛星 / 衛星+地名 / 控えめ。APIキー不要） |
+| 保存先 | 「保存先を選んで保存」（iCloud Drive・このiPhone内・Google Drive・OneDrive）、「共有して保存」、「このiPhone内に保存」（ファイルアプリの「このiPhone内 > GPSLogger」） |
 
 ---
 
@@ -35,8 +49,10 @@ GPS位置データをリアルタイムで記録・エクスポート・可視�
 | 言語 | Swift |
 | UIフレームワーク | SwiftUI |
 | 位置情報 | CoreLocation |
+| 地図 | MapKit / WKWebView + Leaflet.js |
 | リアクティブ | Combine |
-| ローカルDB | UserDefaults（JSONエンコード） |
+| データ保存 | ファイル（セッション一覧は JSON、ログポイントは JSON Lines で追記）。設定は UserDefaults |
+| プロジェクト生成 | XcodeGen（`project.yml`） |
 | アーキテクチャ | MVVM |
 
 ### Android
@@ -59,8 +75,8 @@ View (SwiftUI / Jetpack Compose)
   └─ ViewModel (ObservableObject / StateFlow)
        └─ Repository
             └─ LocationService  ←  CoreLocation / Play Services
-            └─ Database         ←  UserDefaults / Room (SQLite)
-            └─ UploadService    ←  Google Drive / OneDrive API
+            └─ Database         ←  ファイル（JSON / JSON Lines） / Room (SQLite)
+            └─ 保存・共有        ←  保存先ピッカー・共有（Google Drive / OneDrive などのアプリが送信）
 ```
 
 ---
@@ -69,7 +85,7 @@ View (SwiftUI / Jetpack Compose)
 
 ### 前提条件
 
-- **iOS**: macOS + Xcode 15以上
+- **iOS**: macOS + Xcode 15以上 + [XcodeGen](https://github.com/yonaskolb/XcodeGen)（iOS 17以上で動作）
 - **Android**: Android Studio + JDK 17以上
 - **Google Maps** を使う場合: [Google Maps Platform](https://developers.google.com/maps) の APIキー（ビルドする開発者が用意。[設定方法](#google-maps-apiキーの設定)）
 
@@ -78,13 +94,17 @@ View (SwiftUI / Jetpack Compose)
 ### iOS
 
 ```bash
+brew install xcodegen   # 初回のみ
 cd ios
+xcodegen generate       # project.yml から GPSLogger.xcodeproj を作る
 open GPSLogger.xcodeproj
 ```
 
-1. Xcode でプロジェクトを開く
-2. `Signing & Capabilities` で自分の Apple Developer アカウントを設定
-3. 実機またはシミュレータでビルド・実行
+1. `xcodegen generate` で Xcode プロジェクトを作る（`.xcodeproj` は git に入れていません。ファイルを追加・削除したら作り直してください）
+2. Xcode でプロジェクトを開き、`Signing & Capabilities` で自分の Apple Developer アカウント（チーム）を選ぶ
+3. 実機またはシミュレータでビルド・実行（`⌘U` でユニットテスト）
+
+Apple マップを使うので、iOS 版では APIキーの設定は不要です。GitHub Actions（`.github/workflows/ios.yml`）でも、macOS 上でビルドとユニットテストを行います。
 
 ---
 
@@ -133,7 +153,8 @@ Google 以外の地図は、WebView 上の [Leaflet](https://leafletjs.com/) 1.9
 
 | 提供元 | 種類 | タイルURL | 最大ズーム ※ | APIキー |
 |--------|------|-----------|:---:|:---:|
-| Google | 標準 / 衛星 / 衛星+地名 / 地形 | Maps SDK for Android（URL指定なし） | - | 必要 |
+| Google（Android版） | 標準 / 衛星 / 衛星+地名 / 地形 | Maps SDK for Android（URL指定なし） | - | 必要 |
+| Apple（iOS版） | 標準 / 衛星 / 衛星+地名 / 控えめ | MapKit（URL指定なし） | - | 不要 |
 | OpenStreetMap | 標準 | `https://tile.openstreetmap.org/{z}/{x}/{y}.png` | 19 | 不要 |
 | OpenStreetMap | 人道支援（HOT） | `https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png` | 19 | 不要 |
 | OpenStreetMap | 地形（OpenTopoMap） | `https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png` | 17 | 不要 |
@@ -151,6 +172,7 @@ Google 以外の地図は、WebView 上の [Leaflet](https://leafletjs.com/) 1.9
 
 | 地図 | ライセンス・利用条件 | 帰属表示 |
 |------|------------------|----------|
+| Apple（iOS版） | [Apple マップの利用規約](https://www.apple.com/legal/internet-services/maps/terms-en.html)。MapKit 経由で表示 | Apple マップのロゴと「法的情報」リンク（MapKit が自動で表示） |
 | Google | [Google Maps Platform 利用規約](https://cloud.google.com/maps-platform/terms)。表示は SDK 経由に限られ、タイルの保存や加工はできません | Google のロゴ・著作権表示（SDK が自動で表示） |
 | OpenStreetMap 標準 | データ: [ODbL](https://opendatacommons.org/licenses/odbl/)（[著作権とライセンス](https://www.openstreetmap.org/copyright)）。タイル: [OSMF タイル利用ポリシー](https://operations.osmfoundation.org/policies/tiles/) | © OpenStreetMap contributors |
 | OSM 人道支援 | データ: ODbL。スタイル: [Humanitarian OpenStreetMap Team](https://www.hotosm.org/)。タイル配信: [OpenStreetMap France](https://www.openstreetmap.fr/)（同団体の利用条件に従う） | © OpenStreetMap contributors, Tiles style by HOT |
@@ -174,6 +196,7 @@ Google 以外の地図は、WebView 上の [Leaflet](https://leafletjs.com/) 1.9
 - **デフォルト地図**: 地図画面を開いたときに最初に表示する地図（既定は OpenStreetMap 標準）
 - **Google マップの表示**: 交通状況・3D の建物・ズームボタンのオン／オフ
 - **APIキーの状態**: 「設定済み」か「未設定」かを表示（変更はビルド時のみ）
+- **Apple マップの表示**（iOS版）: 交通状況・3D（建物・地形の立体表示）のオン／オフ
 
 ---
 
@@ -201,9 +224,10 @@ xxxxxxxx-...,2026-04-09T10:00:00+09:00,35.681236,139.767125,5.2,3.0,1.2,GPS,STAN
 ## 必要な権限
 
 ### iOS
-- `NSLocationAlwaysAndWhenInUseUsageDescription` — バックグラウンド測位
+- `NSLocationAlwaysAndWhenInUseUsageDescription` — バックグラウンド測位・終了後の記録再開
 - `NSLocationWhenInUseUsageDescription` — フォアグラウンド測位
 - Background Modes: **Location updates**
+- `UIFileSharingEnabled` / `LSSupportsOpeningDocumentsInPlace` — 保存したCSVをファイルアプリに表示
 
 ### Android
 - `ACCESS_FINE_LOCATION` — 高精度GPS測位
@@ -219,12 +243,14 @@ xxxxxxxx-...,2026-04-09T10:00:00+09:00,35.681236,139.767125,5.2,3.0,1.2,GPS,STAN
 ```
 gps_logger/
 ├── ios/
-│   └── GPSLogger/
-│       ├── Models/          # データモデル（LogPoint, Session, MapType）
-│       ├── Services/        # 位置情報・アップロードサービス
-│       ├── Repository/      # データアクセス層
-│       ├── ViewModels/      # MVVM ViewModel
-│       └── Views/           # SwiftUI 画面
+│   ├── project.yml          # XcodeGen の設定（Xcode プロジェクトはここから作る）
+│   ├── GPSLogger/
+│   │   ├── Models/          # データモデル（LogPoint, Session, RecordMode, MapLayer）
+│   │   ├── Services/        # 位置情報の取得と記録（バックグラウンド測位）
+│   │   ├── Repository/      # データ保存・設定・CSVの読み書き
+│   │   ├── ViewModels/      # MVVM ViewModel
+│   │   └── Views/           # SwiftUI 画面
+│   └── GPSLoggerTests/      # ユニットテスト
 ├── android/
 │   └── app/src/main/java/com/example/gpslogger/
 │       ├── model/           # データモデル

@@ -4,184 +4,178 @@ import WebKit
 
 /**
  * 地図表示画面。
- * 上部のSegmentedPickerでMapKit / OpenStreetMap / 国土地理院地図を切り替えられる。
+ * 上のタブで提供元（Apple / OSM / 地理院 / その他）、その下のボタンで地図の種類を切り替える。
  *
- * - MapKit:         Apple標準。MKMapViewでポリライン（軌跡）を描画。
- * - OpenStreetMap:  WebView + Leaflet.js。APIキー不要。
- * - 国土地理院:      WebView + Leaflet.js + GSIタイル。APIキー不要・日本の詳細地図。
+ * - Apple:      MapKit。APIキー不要。軌跡を線で描画。
+ * - それ以外:    WKWebView + Leaflet.js でタイル画像を表示。APIキー不要。
  */
 struct MapView: View {
     @StateObject private var vm: MapViewModel
-    @State private var selectedMap: MapType = .osm
+    @State private var layer: MapLayer
+    private let settings: AppSettings
 
-    init(session: Session, repo: LocationRepository) {
+    init(session: Session, repo: LocationRepository, settings: AppSettings) {
         _vm = StateObject(wrappedValue: MapViewModel(session: session, repo: repo))
+        _layer = State(initialValue: settings.defaultLayer)
+        self.settings = settings
     }
 
     var body: some View {
         VStack(spacing: 0) {
-            // 地図切替ピッカー（SegmentedPicker = iOSのセグメントコントロール）
-            Picker("地図", selection: $selectedMap) {
-                ForEach(MapType.allCases, id: \.self) { type in
-                    Text(type.displayName).tag(type)
+            // 提供元タブ
+            Picker("提供元", selection: providerBinding) {
+                ForEach(MapProvider.allCases) { provider in
+                    Text(provider.label).tag(provider)
                 }
             }
             .pickerStyle(.segmented)
             .padding(.horizontal, 12)
-            .padding(.vertical, 8)
+            .padding(.top, 8)
 
-            // 地図本体
+            // 地図の種類
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(MapLayer.of(layer.provider)) { item in
+                        Button(item.label) { layer = item }
+                            .buttonStyle(.bordered)
+                            .tint(item == layer ? Color.accentColor : Color.secondary)
+                    }
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+            }
+
+            // 地図本体。全ポイントが収まる位置で表示するため、読み込みが終わってから作る
             Group {
-                switch selectedMap {
-                case .mapKit:
-                    NativeMapView(logPoints: vm.logPoints)
-                case .osm:
-                    WebMapView(logPoints: vm.logPoints, useGsi: false)
-                case .gsi:
-                    WebMapView(logPoints: vm.logPoints, useGsi: true)
+                if vm.isLoading {
+                    ProgressView()
+                } else if vm.logPoints.isEmpty {
+                    ContentUnavailableView("記録データがありません", systemImage: "map.fill")
+                } else if layer.isApple {
+                    AppleMapView(logPoints: vm.logPoints, layer: layer, settings: settings)
+                } else {
+                    WebMapView(logPoints: vm.logPoints, layer: layer)
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .overlay {
-                // データが空の場合のオーバーレイ表示
-                if vm.logPoints.isEmpty {
-                    ContentUnavailableView(
-                        "記録データがありません",
-                        systemImage: "map.fill"
-                    )
-                }
-            }
         }
         .navigationTitle(vm.session.name)
         .navigationBarTitleDisplayMode(.inline)
-    }
-}
-
-// MARK: - MapKit（ネイティブ地図）
-
-/**
- * Apple MapKitをUIViewRepresentableでラップした地図ビュー。
- * UIViewRepresentable: UIKitのビュー（MKMapView）をSwiftUIで使うための仕組み。
- * MKMapViewを使うことでポリライン（軌跡の線）が描画できる。
- */
-struct NativeMapView: UIViewRepresentable {
-    let logPoints: [LogPoint]
-
-    func makeUIView(context: Context) -> MKMapView {
-        let mapView = MKMapView()
-        mapView.delegate = context.coordinator
-        mapView.showsUserLocation = false
-        return mapView
+        .task { await vm.load() }
     }
 
-    func updateUIView(_ mapView: MKMapView, context: Context) {
-        // 既存のオーバーレイ・アノテーションをクリア
-        mapView.removeOverlays(mapView.overlays)
-        mapView.removeAnnotations(mapView.annotations)
-
-        guard !logPoints.isEmpty else { return }
-
-        let coordinates = logPoints.map {
-            CLLocationCoordinate2D(latitude: $0.latitude, longitude: $0.longitude)
-        }
-
-        // 軌跡ポリライン（青線）を追加
-        if coordinates.count > 1 {
-            let polyline = MKPolyline(coordinates: coordinates, count: coordinates.count)
-            mapView.addOverlay(polyline)
-        }
-
-        // 開始地点のピン（緑）
-        let startPin = MKPointAnnotation()
-        startPin.coordinate = coordinates.first!
-        startPin.title = "開始"
-        mapView.addAnnotation(startPin)
-
-        // 終了地点のピン（赤）
-        if coordinates.count > 1 {
-            let endPin = MKPointAnnotation()
-            endPin.coordinate = coordinates.last!
-            endPin.title = "終了"
-            mapView.addAnnotation(endPin)
-        }
-
-        // 全ポイントが見えるようカメラを調整
-        let region = MKCoordinateRegion(fitting: coordinates)
-        mapView.setRegion(region, animated: false)
-    }
-
-    func makeCoordinator() -> Coordinator {
-        Coordinator()
-    }
-
-    /// MKMapViewのデリゲート。ポリラインの見た目（色・太さ）を設定する。
-    class Coordinator: NSObject, MKMapViewDelegate {
-        func mapView(_ mapView: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
-            if let polyline = overlay as? MKPolyline {
-                let renderer = MKPolylineRenderer(polyline: polyline)
-                renderer.strokeColor = UIColor(red: 0.08, green: 0.39, blue: 0.75, alpha: 1.0)
-                renderer.lineWidth = 4
-                return renderer
+    /// 提供元を切り替えたら、デフォルト地図の提供元ならその地図、それ以外は先頭の地図を開く
+    private var providerBinding: Binding<MapProvider> {
+        Binding(
+            get: { layer.provider },
+            set: { provider in
+                guard provider != layer.provider else { return }
+                layer = settings.defaultLayer.provider == provider
+                    ? settings.defaultLayer
+                    : (MapLayer.of(provider).first ?? .defaultLayer)
             }
-            return MKOverlayRenderer(overlay: overlay)
+        )
+    }
+}
+
+// MARK: - Apple マップ（MapKit）
+
+/// 軌跡（青線）と開始（緑）・終了（赤）の印を描く
+private struct AppleMapView: View {
+    let logPoints: [LogPoint]
+    let layer: MapLayer
+    let settings: AppSettings
+
+    var body: some View {
+        let coordinates = logPoints.map { CLLocationCoordinate2D(latitude: $0.latitude, longitude: $0.longitude) }
+        // .automatic は地図上のすべての線と印が収まる位置になる
+        Map(initialPosition: .automatic) {
+            if coordinates.count > 1 {
+                MapPolyline(coordinates: coordinates)
+                    .stroke(Color(red: 0x15 / 255, green: 0x65 / 255, blue: 0xC0 / 255), lineWidth: 4)
+            }
+            if let first = coordinates.first {
+                Annotation("開始", coordinate: first) {
+                    MarkerDot(color: Color(red: 0x4C / 255, green: 0xAF / 255, blue: 0x50 / 255))
+                }
+            }
+            if coordinates.count > 1, let last = coordinates.last {
+                Annotation("終了", coordinate: last) {
+                    MarkerDot(color: Color(red: 0xF4 / 255, green: 0x43 / 255, blue: 0x36 / 255))
+                }
+            }
+        }
+        .mapStyle(mapStyle)
+        .mapControls {
+            MapCompass()
+            MapScaleView()
+            MapPitchToggle()
+        }
+    }
+
+    private var mapStyle: MapStyle {
+        let elevation: MapStyle.Elevation = settings.apple3D ? .realistic : .flat
+        switch layer {
+        case .appleSatellite:
+            return .imagery(elevation: elevation)
+        case .appleHybrid:
+            return .hybrid(elevation: elevation, showsTraffic: settings.appleTraffic)
+        case .appleMuted:
+            return .standard(elevation: elevation, emphasis: .muted, showsTraffic: settings.appleTraffic)
+        default:
+            return .standard(elevation: elevation, showsTraffic: settings.appleTraffic)
         }
     }
 }
 
-// MKCoordinateRegionの拡張。座標の配列から地図の表示範囲を計算する。
-private extension MKCoordinateRegion {
-    init(fitting coordinates: [CLLocationCoordinate2D]) {
-        let lats = coordinates.map { $0.latitude }
-        let lngs = coordinates.map { $0.longitude }
-        let center = CLLocationCoordinate2D(
-            latitude:  ((lats.min() ?? 0) + (lats.max() ?? 0)) / 2,
-            longitude: ((lngs.min() ?? 0) + (lngs.max() ?? 0)) / 2
-        )
-        let span = MKCoordinateSpan(
-            latitudeDelta:  max((lats.max() ?? 0) - (lats.min() ?? 0), 0.001) * 1.5,
-            longitudeDelta: max((lngs.max() ?? 0) - (lngs.min() ?? 0), 0.001) * 1.5
-        )
-        self.init(center: center, span: span)
+private struct MarkerDot: View {
+    let color: Color
+
+    var body: some View {
+        Circle()
+            .fill(color)
+            .frame(width: 20, height: 20)
+            .overlay(Circle().stroke(Color.white, lineWidth: 2))
     }
 }
 
 // MARK: - WebView（Leaflet.js地図）
 
 /**
- * WKWebViewをUIViewRepresentableでラップしたWebビュー。
- * Leaflet.js（地図表示ライブラリ）を使ってOpenStreetMapまたは国土地理院地図を表示する。
- * useGsi=false → OpenStreetMap
- * useGsi=true  → 国土地理院地図
+ * WKWebViewでLeaflet.js（地図表示ライブラリ）を動かし、MapLayer のタイル地図を表示する。
+ * 軌跡と開始・終了の印はAndroid版と同じ見た目。
  */
-struct WebMapView: UIViewRepresentable {
+private struct WebMapView: UIViewRepresentable {
     let logPoints: [LogPoint]
-    let useGsi: Bool
+    let layer: MapLayer
+
+    func makeCoordinator() -> Coordinator { Coordinator() }
 
     func makeUIView(context: Context) -> WKWebView {
         let webView = WKWebView()
-        webView.scrollView.isScrollEnabled = false  // マップ内のスクロールはLeafletが制御
+        webView.scrollView.isScrollEnabled = false  // 地図のスクロールはLeafletが行う
         return webView
     }
 
     func updateUIView(_ webView: WKWebView, context: Context) {
+        // 地図や点の数が変わったときだけ読み込み直す（画面の再描画ごとに読み込むと地図が初期位置に戻る）
+        let key = "\(layer.rawValue)-\(logPoints.count)"
+        guard context.coordinator.loadedKey != key else { return }
+        context.coordinator.loadedKey = key
         // baseURLにhttps://unpkg.comを指定することでCDNからLeafletを読み込める
-        webView.loadHTMLString(
-            buildHtml(),
-            baseURL: URL(string: "https://unpkg.com")
-        )
+        webView.loadHTMLString(buildHtml(), baseURL: URL(string: "https://unpkg.com"))
+    }
+
+    final class Coordinator {
+        var loadedKey: String?
     }
 
     private func buildHtml() -> String {
-        let tileUrl = useGsi
-            ? "https://cyberjapandata.gsi.go.jp/xyz/std/{z}/{x}/{y}.png"
-            : "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-        let attribution = useGsi
-            ? "&copy; <a href='https://maps.gsi.go.jp/development/ichiran.html'>国土地理院</a>"
-            : "&copy; <a href='https://www.openstreetmap.org/copyright'>OpenStreetMap</a> contributors"
-
-        let centerLat = logPoints.first?.latitude  ?? 35.681236
+        let tileUrl = layer.tileUrl ?? ""
+        let centerLat = logPoints.first?.latitude ?? 35.681236
         let centerLng = logPoints.first?.longitude ?? 139.767125
-
+        // モノクロ表示などはタイルの層だけにフィルタをかける（軌跡や印の色は変えない）
+        let tileFilterCss = layer.tileFilter.map { ".leaflet-tile-pane { filter: \($0); }" } ?? ""
         let pointsJson = logPoints
             .map { "{\"lat\":\($0.latitude),\"lng\":\($0.longitude)}" }
             .joined(separator: ",")
@@ -193,15 +187,21 @@ struct WebMapView: UIViewRepresentable {
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
             <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
             <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-            <style>html,body,#map{height:100%;margin:0;padding:0;}</style>
+            <style>
+                html, body, #map { height: 100%; margin: 0; padding: 0; }
+                \(tileFilterCss)
+            </style>
         </head>
         <body>
             <div id="map"></div>
             <script>
                 var map = L.map('map').setView([\(centerLat), \(centerLng)], 14);
-                L.tileLayer('\(tileUrl)', {
-                    attribution: '\(attribution)',
-                    maxZoom: 18
+                // maxNativeZoomより先はタイルを拡大して表示する
+                L.tileLayer(\(jsQuoted(tileUrl)), {
+                    attribution: \(jsQuoted(layer.attribution)),
+                    subdomains: \(jsQuoted(layer.subdomains)),
+                    maxNativeZoom: \(layer.maxNativeZoom),
+                    maxZoom: 19
                 }).addTo(map);
 
                 var points = [\(pointsJson)];
@@ -235,5 +235,15 @@ struct WebMapView: UIViewRepresentable {
         </body>
         </html>
         """
+    }
+
+    /// JavaScriptのシングルクォート文字列にする
+    private func jsQuoted(_ value: String) -> String {
+        let escaped = value
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "'", with: "\\'")
+            .replacingOccurrences(of: "\n", with: "\\n")
+            .replacingOccurrences(of: "</", with: "<\\/")
+        return "'\(escaped)'"
     }
 }

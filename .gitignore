@@ -4,3 +4,9 @@
 # Android - APIキーなどを含むローカル設定ファイル
 local.properties
 secrets.properties
+
+# iOS - project.yml から XcodeGen で作る
+ios/GPSLogger.xcodeproj/
+ios/build/
+xcuserdata/
+DerivedData/

@@ -2,6 +2,39 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+    <key>CFBundleDevelopmentRegion</key>
+    <string>ja</string>
+    <key>CFBundleDisplayName</key>
+    <string>GPSLogger</string>
+    <key>CFBundleExecutable</key>
+    <string>$(EXECUTABLE_NAME)</string>
+    <key>CFBundleIdentifier</key>
+    <string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+    <key>CFBundleInfoDictionaryVersion</key>
+    <string>6.0</string>
+    <key>CFBundleName</key>
+    <string>$(PRODUCT_NAME)</string>
+    <key>CFBundlePackageType</key>
+    <string>$(PRODUCT_BUNDLE_PACKAGE_TYPE)</string>
+    <key>CFBundleShortVersionString</key>
+    <string>$(MARKETING_VERSION)</string>
+    <key>CFBundleVersion</key>
+    <string>$(CURRENT_PROJECT_VERSION)</string>
+    <key>LSRequiresIPhoneOS</key>
+    <true/>
+    <key>UIApplicationSceneManifest</key>
+    <dict>
+        <key>UIApplicationSupportsMultipleScenes</key>
+        <false/>
+    </dict>
+    <key>UILaunchScreen</key>
+    <dict/>
+    <key>UISupportedInterfaceOrientations</key>
+    <array>
+        <string>UIInterfaceOrientationPortrait</string>
+        <string>UIInterfaceOrientationLandscapeLeft</string>
+        <string>UIInterfaceOrientationLandscapeRight</string>
+    </array>
     <!-- バックグラウンドでのGPS取得を許可 -->
     <key>UIBackgroundModes</key>
     <array>
@@ -9,10 +42,15 @@
     </array>
     <!-- GPS権限の説明文（ユーザーに表示される） -->
     <key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
-    <string>バックグラウンドでGPSをロギングするために位置情報を使用します。</string>
+    <string>バックグラウンドでGPSをロギングし、アプリが終了されても移動したときに記録を再開するために位置情報を使用します。</string>
     <key>NSLocationWhenInUseUsageDescription</key>
     <string>現在地を取得してGPSをロギングするために位置情報を使用します。</string>
     <key>NSLocationAlwaysUsageDescription</key>
     <string>バックグラウンドでGPSをロギングするために常に位置情報が必要です。</string>
+    <!-- 「このiPhone内に保存」したCSVを、ファイルアプリの「このiPhone内 > GPSLogger」に表示する -->
+    <key>UIFileSharingEnabled</key>
+    <true/>
+    <key>LSSupportsOpeningDocumentsInPlace</key>
+    <true/>
 </dict>
 </plist>

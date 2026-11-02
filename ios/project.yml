@@ -1,0 +1,50 @@
+# XcodeGen の設定。`xcodegen generate` で GPSLogger.xcodeproj を作る（.xcodeproj は git に入れない）
+name: GPSLogger
+options:
+  bundleIdPrefix: com.example
+  deploymentTarget:
+    iOS: "17.0"
+  developmentLanguage: ja
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    SWIFT_STRICT_CONCURRENCY: minimal
+    MARKETING_VERSION: "1.0"
+    CURRENT_PROJECT_VERSION: "1"
+targets:
+  GPSLogger:
+    type: application
+    platform: iOS
+    sources:
+      - path: GPSLogger
+        excludes:
+          - Info.plist
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.example.gpslogger
+        INFOPLIST_FILE: GPSLogger/Info.plist
+        GENERATE_INFOPLIST_FILE: NO
+        TARGETED_DEVICE_FAMILY: "1"
+        CODE_SIGN_STYLE: Automatic
+        # 実機で動かすときは Xcode の Signing & Capabilities で自分のチームを選ぶ
+        DEVELOPMENT_TEAM: ""
+  GPSLoggerTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: GPSLoggerTests
+    dependencies:
+      - target: GPSLogger
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: com.example.gpslogger.tests
+schemes:
+  GPSLogger:
+    build:
+      targets:
+        GPSLogger: all
+        GPSLoggerTests: [test]
+    test:
+      targets:
+        - GPSLoggerTests

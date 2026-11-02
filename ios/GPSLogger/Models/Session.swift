@@ -1,26 +1,14 @@
 import Foundation
 
 /// 1回の記録セッション（記録開始〜停止の1まとまり）
-struct Session: Identifiable, Codable {
-    let id: UUID
-    var startTime: Date
-    var endTime: Date?
-    var name: String
-    var pointCount: Int
-    var fileIndex: Int
-    var isCompleted: Bool
-
-    init() {
-        self.id = UUID()
-        self.startTime = Date()
-        self.endTime = nil
-        let fmt = DateFormatter()
-        fmt.dateFormat = "yyyy-MM-dd HH:mm"
-        self.name = fmt.string(from: Date())
-        self.pointCount = 0
-        self.fileIndex = 0
-        self.isCompleted = false
-    }
+struct Session: Identifiable, Codable, Equatable {
+    var id: UUID = UUID()
+    var startTime: Date = Date()
+    var endTime: Date? = nil
+    var name: String = Session.defaultName()
+    var pointCount: Int = 0
+    var fileIndex: Int = 0
+    var isCompleted: Bool = false
 
     /// 記録時間（秒）
     var durationSeconds: TimeInterval {
@@ -30,7 +18,14 @@ struct Session: Identifiable, Codable {
 
     /// "HH:MM:SS" 形式
     var durationFormatted: String {
-        let s = Int(durationSeconds)
+        let s = max(Int(durationSeconds), 0)
         return String(format: "%02d:%02d:%02d", s / 3600, (s % 3600) / 60, s % 60)
+    }
+
+    static func defaultName(_ date: Date = Date()) -> String {
+        let fmt = DateFormatter()
+        fmt.locale = Locale(identifier: "ja_JP")
+        fmt.dateFormat = "yyyy-MM-dd HH:mm"
+        return fmt.string(from: date)
     }
 }
