@@ -6,6 +6,7 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.gpslogger.model.LogPoint
+import com.example.gpslogger.model.RecordMode
 import com.example.gpslogger.model.Session
 import com.example.gpslogger.repository.AppSettings
 import com.example.gpslogger.repository.LocationRepository
@@ -18,6 +19,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
@@ -36,7 +38,7 @@ import javax.inject.Inject
 class HomeViewModel @Inject constructor(
     application: Application,
     private val repo: LocationRepository,
-    settingsRepo: SettingsRepository
+    private val settingsRepo: SettingsRepository
 ) : AndroidViewModel(application) {
 
     /** 記録中の状態（記録手段を含む）。記録していないときは null */
@@ -89,6 +91,15 @@ class HomeViewModel @Inject constructor(
     fun stopRecording() {
         // セッションを閉じるのはServiceが行う（保存待ちのポイントを書き終えてから）
         sendToService(LocationForegroundService.ACTION_STOP)
+    }
+
+    /** 記録モードを 標準 ⇔ 低消費電力 で切り替える。記録中ならServiceがすぐに反映する */
+    fun toggleRecordMode() {
+        viewModelScope.launch {
+            val s = settingsRepo.settings.first()
+            val next = if (s.recordMode == RecordMode.STANDARD) RecordMode.LOW_POWER else RecordMode.STANDARD
+            settingsRepo.save(s.copy(recordMode = next))
+        }
     }
 
     private fun sendToService(action: String, sessionId: String? = null) {

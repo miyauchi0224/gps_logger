@@ -10,14 +10,20 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.ServiceInfo
+import android.location.GnssMeasurementRequest
+import android.location.GnssMeasurementsEvent
+import android.location.Location
+import android.location.LocationManager
 import android.os.BatteryManager
 import android.os.Build
 import android.os.IBinder
 import android.os.Looper
 import android.os.PowerManager
+import android.os.SystemClock
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
+import androidx.core.location.LocationListenerCompat
 import com.example.gpslogger.MainActivity
 import com.example.gpslogger.R
 import com.example.gpslogger.model.LogPoint
@@ -57,6 +63,12 @@ data class RecordingStatus(val sessionId: String, val method: RecordMethod)
  *
  * 標準モードで記録中も、バッテリー残量が設定値以下（充電中を除く）か
  * 省電力モードになったら低消費電力（WiFi・基地局）に自動で切り替える。
+ *
+ * 標準モードでは、Fused Location に加えて端末のGPSを直接使う。Fused Location は端末が
+ * 止まっていると、GPSが毎秒測位していても数秒おきにしか位置を渡さないため。
+ * GPSが測位できているあいだはGPSの位置だけを記録し、屋内などでGPSが途切れたら Fused Location の位置で補う。
+ * さらにGPSチップ自体も止まっていると間欠動作（数秒おきの測位）になるので、Android 12以降は
+ * 連続測位（full tracking）を要求して記録間隔どおりに測位させる。
  */
 @AndroidEntryPoint
 class LocationForegroundService : Service() {
@@ -74,6 +86,8 @@ class LocationForegroundService : Service() {
         private const val NOTIFICATION_UPDATE_MS = 5_000L
         /** 自動切替から標準に戻すときの余裕（残量が閾値付近で行き来しないように） */
         private const val BATTERY_HYSTERESIS = 5
+        /** GPSの位置がこの時間（記録間隔に足す）届かなければ、GPSが途切れたとみなして Fused Location の位置を使う */
+        private const val GPS_TIMEOUT_MS = 2_000L
 
         private val _status = MutableStateFlow<RecordingStatus?>(null)
         val status: StateFlow<RecordingStatus?> = _status.asStateFlow()
@@ -86,6 +100,7 @@ class LocationForegroundService : Service() {
     @Inject lateinit var settingsRepo: SettingsRepository
 
     private lateinit var fusedClient: FusedLocationProviderClient
+    private lateinit var locationManager: LocationManager
     private lateinit var overlay: RecordingOverlay
 
     // DB書き込みを1本の流れにして、ポイント数の更新や停止処理の順序を保つ
@@ -102,28 +117,52 @@ class LocationForegroundService : Service() {
     private var sessionStartTime = 0L
     private var pointCount = 0
     private var lastNotifiedAt = 0L
+    /** GPSから最後に位置が届いた時刻（elapsedRealtime）。0 は未受信 */
+    private var lastGpsAt = 0L
+    /** 最後に記録した位置の測位時刻。Fused Location とGPSから同じ位置が届いたときに二重に記録しない */
+    private var lastSavedTime = 0L
 
     private val locationCallback = object : LocationCallback() {
         override fun onLocationResult(result: LocationResult) {
-            val sid = sessionId ?: return
             val location = result.lastLocation ?: return
-            val point = LogPoint(
-                sessionId = sid,
-                latitude = location.latitude,
-                longitude = location.longitude,
-                altitude = if (location.hasAltitude()) location.altitude else null,
-                accuracy = location.accuracy,
-                speed = if (location.hasSpeed()) location.speed else null,
-                sourceType = if (location.accuracy < 20f) SourceType.GPS else SourceType.WIFI,
-                recordMethod = method ?: RecordMethod.STANDARD
-            )
-            _latestPoint.value = point
-            serviceScope.launch { repo.saveLogPoint(point) }
-
-            pointCount++
-            val now = System.currentTimeMillis()
-            if (now - lastNotifiedAt >= NOTIFICATION_UPDATE_MS) updateNotification()
+            // GPSを直接使っていて、GPSが測位できているあいだは重複になるので記録しない
+            val gpsActive = lastGpsAt > 0 &&
+                SystemClock.elapsedRealtime() - lastGpsAt < settings.intervalSec * 1000 + GPS_TIMEOUT_MS
+            if (!gpsActive) savePoint(location, if (location.accuracy < 20f) SourceType.GPS else SourceType.WIFI)
         }
+    }
+
+    // LocationListenerCompat は onProviderEnabled などに既定の実装があり、古いAndroidでも落ちない
+    private val gpsListener = LocationListenerCompat { location ->
+        lastGpsAt = SystemClock.elapsedRealtime()
+        savePoint(location, SourceType.GPS)
+    }
+
+    // 連続測位を要求するために登録するだけで、測定データ自体は使わない
+    private val gnssMeasurementsCallback = object : GnssMeasurementsEvent.Callback() {}
+
+    private fun savePoint(location: Location, source: SourceType) {
+        val sid = sessionId ?: return
+        if (location.time == lastSavedTime) return
+        lastSavedTime = location.time
+        val point = LogPoint(
+            sessionId = sid,
+            // 受け取った時刻ではなく測位した時刻
+            timestamp = location.time,
+            latitude = location.latitude,
+            longitude = location.longitude,
+            altitude = if (location.hasAltitude()) location.altitude else null,
+            accuracy = location.accuracy,
+            speed = if (location.hasSpeed()) location.speed else null,
+            sourceType = source,
+            recordMethod = method ?: RecordMethod.STANDARD
+        )
+        _latestPoint.value = point
+        serviceScope.launch { repo.saveLogPoint(point) }
+
+        pointCount++
+        val now = System.currentTimeMillis()
+        if (now - lastNotifiedAt >= NOTIFICATION_UPDATE_MS) updateNotification()
     }
 
     /** バッテリー残量・充電状態・省電力モードの変化で記録手段を選び直す */
@@ -137,13 +176,17 @@ class LocationForegroundService : Service() {
     override fun onCreate() {
         super.onCreate()
         fusedClient = LocationServices.getFusedLocationProviderClient(this)
+        locationManager = getSystemService(LocationManager::class.java)
         overlay = RecordingOverlay(this)
         createNotificationChannel()
-        // 緑の帯の表示設定は記録中に変えてもすぐ反映する
+        // 記録モードや緑の帯などの設定は、記録中に変えてもすぐ反映する
         serviceScope.launch {
             settingsRepo.settings.collect { s ->
                 withContext(Dispatchers.Main) {
-                    settings = settings.copy(showOverlay = s.showOverlay)
+                    // 記録間隔が変わったら、記録手段が同じでも位置情報のリクエストを出し直す
+                    if (s.intervalSec != settings.intervalSec) method = null
+                    settings = s
+                    applyLocationRequest()
                     updateOverlay()
                 }
             }
@@ -190,7 +233,7 @@ class LocationForegroundService : Service() {
 
     private fun stopRecording() {
         val sid = sessionId
-        fusedClient.removeLocationUpdates(locationCallback)
+        removeLocationUpdates()
         sessionId = null
         _status.value = null
         overlay.hide()
@@ -220,16 +263,36 @@ class LocationForegroundService : Service() {
         method = next
 
         val mode = if (next == RecordMethod.STANDARD) RecordMode.STANDARD else RecordMode.LOW_POWER
-        val request = LocationRequest.Builder(mode.priority, settings.intervalSec * 1000).build()
-        fusedClient.removeLocationUpdates(locationCallback)
+        val intervalMs = settings.intervalSec * 1000
+        val request = LocationRequest.Builder(mode.priority, intervalMs).build()
+        removeLocationUpdates()
         try {
             fusedClient.requestLocationUpdates(request, locationCallback, Looper.getMainLooper())
+            if (next == RecordMethod.STANDARD && locationManager.allProviders.contains(LocationManager.GPS_PROVIDER)) {
+                locationManager.requestLocationUpdates(
+                    LocationManager.GPS_PROVIDER, intervalMs, 0f, gpsListener, Looper.getMainLooper()
+                )
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    locationManager.registerGnssMeasurementsCallback(
+                        GnssMeasurementRequest.Builder().setFullTracking(true).build(),
+                        ContextCompat.getMainExecutor(this),
+                        gnssMeasurementsCallback
+                    )
+                }
+            }
         } catch (e: SecurityException) {
             stopRecording()
             return
         }
         _status.value = RecordingStatus(sid, next)
         updateNotification()
+    }
+
+    private fun removeLocationUpdates() {
+        fusedClient.removeLocationUpdates(locationCallback)
+        locationManager.removeUpdates(gpsListener)
+        locationManager.unregisterGnssMeasurementsCallback(gnssMeasurementsCallback)
+        lastGpsAt = 0L
     }
 
     /** 記録中で設定が有効なら、他のアプリの上に緑の帯を出す */
@@ -327,7 +390,7 @@ class LocationForegroundService : Service() {
     }
 
     override fun onDestroy() {
-        fusedClient.removeLocationUpdates(locationCallback)
+        removeLocationUpdates()
         if (receiverRegistered) unregisterReceiver(powerReceiver)
         overlay.hide()
         _status.value = null

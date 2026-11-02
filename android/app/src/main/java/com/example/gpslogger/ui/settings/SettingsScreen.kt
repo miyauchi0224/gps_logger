@@ -88,7 +88,9 @@ private fun SettingsForm(
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
             modifier = Modifier.fillMaxWidth(),
             isError = !intervalValid,
-            supportingText = { Text("1〜3600の間で設定してください") }
+            supportingText = {
+                Text("1〜3600の間で設定してください。標準モードでは止まっているときもこの間隔で測位するため、短いほど電池を使います")
+            }
         )
 
         HorizontalDivider()

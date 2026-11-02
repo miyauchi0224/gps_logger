@@ -10,6 +10,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -168,7 +169,7 @@ fun HomeScreen(
             }
 
             // 記録モードと精度・消費電力の目安
-            settings?.let { RecordModeCard(it, status?.method) }
+            settings?.let { RecordModeCard(it, status?.method, onClick = vm::toggleRecordMode) }
 
             // 記録開始・停止ボタン
             if (!locationGranted) {
@@ -199,20 +200,30 @@ fun HomeScreen(
 /**
  * 記録モードの説明カード。
  * 記録中は実際の記録手段（自動切替を含む）、停止中は設定中のモードを表示する。
+ * タップすると記録モードを切り替える（記録中もすぐ反映される）。
  */
 @Composable
-private fun RecordModeCard(settings: AppSettings, method: RecordMethod?) {
+private fun RecordModeCard(settings: AppSettings, method: RecordMethod?, onClick: () -> Unit) {
     val mode = when (method) {
         null -> settings.recordMode
         RecordMethod.STANDARD -> RecordMode.STANDARD
         RecordMethod.LOW_POWER, RecordMethod.LOW_POWER_AUTO -> RecordMode.LOW_POWER
     }
-    Card(modifier = Modifier.fillMaxWidth()) {
+    val other = if (settings.recordMode == RecordMode.STANDARD) RecordMode.LOW_POWER else RecordMode.STANDARD
+    Card(onClick = onClick, modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text(
-                text = if (method != null) "記録手段: ${method.label}" else "記録モード: ${mode.label}",
-                fontWeight = FontWeight.Bold
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = if (method != null) "記録手段: ${method.label}" else "記録モード: ${mode.label}",
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.weight(1f)
+                )
+                Icon(
+                    Icons.Default.SwapHoriz,
+                    contentDescription = "記録モードを切り替える",
+                    tint = MaterialTheme.colorScheme.primary
+                )
+            }
             Text("精度の目安: ${mode.accuracy}")
             Text("消費電力の目安: ${mode.power}")
             Text(
@@ -228,6 +239,11 @@ private fun RecordModeCard(settings: AppSettings, method: RecordMethod?) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
+            Text(
+                text = "タップで「${other.label}」に切り替え",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.primary
+            )
         }
     }
 }
